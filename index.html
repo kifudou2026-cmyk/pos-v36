@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>物販レジ Pro V36</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+            --bg: #f4f7f9;
+            --card: #ffffff;
+            --text: #1a1a1a;
+            --header-h: 60px;
+            --loc-h: 55px;
+            --tabs-h: 50px;
+            --footer-h: 75px;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            height: 100vh;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        #loginOverlay, #confirmOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 3000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
+        .login-box, .confirm-box { background: white; padding: 25px; border-radius: 20px; width: 85%; max-width: 350px; text-align: center; }
+        .login-input { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 1rem; margin-bottom: 12px; text-align: left; }
+        .readonly-id { background: #f1f5f9; color: #64748b; font-family: monospace; font-size: 0.8rem; cursor: not-allowed; border: 1px solid #cbd5e1; }
+
+        #toast {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--success); color: white; padding: 12px 24px;
+            border-radius: 30px; font-weight: bold; z-index: 4000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: none;
+        }
+
+        header {
+            height: var(--header-h); background: var(--card);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 15px; border-bottom: 1px solid #e0e6ed; z-index: 100;
+        }
+        
+        .location-bar {
+            height: var(--loc-h); background: #fff; display: flex; align-items: center;
+            gap: 8px; padding: 0 10px; overflow-x: auto; border-bottom: 1px solid #e0e6ed;
+        }
+        .loc-chip { padding: 8px 16px; border-radius: 20px; background: #f0f2f5; font-size: 0.8rem; white-space: nowrap; font-weight: bold; color: #666; cursor: pointer; border: 1px solid transparent; }
+        .loc-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .tabs { height: var(--tabs-h); display: flex; background: #fff; border-bottom: 1px solid #e0e6ed; }
+        .tab { flex: 1; border: none; background: none; font-size: 0.9rem; font-weight: bold; color: #888; border-bottom: 3px solid transparent; }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+        main { flex: 1; position: relative; overflow: hidden; }
+        .panel { display: none; height: 100%; width: 100%; overflow: hidden; }
+        .panel.active { display: flex; flex-direction: column; }
+
+        .scroll-container { flex: 1; overflow-y: auto; padding: 12px; padding-bottom: 100px; scroll-behavior: smooth; }
+
+        .product-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .product-card {
+            background: var(--card); border-radius: 14px; padding: 15px;
+            display: flex; flex-direction: column; justify-content: space-between;
+            aspect-ratio: 1 / 1; box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            position: relative; cursor: pointer; border: 1px solid #edf2f7;
+            overflow: hidden;
+        }
+        .product-card.disabled { opacity: 0.4; filter: grayscale(1); pointer-events: none; }
+        
+        .stock-badge { position: absolute; top: 10px; right: 10px; font-size: 0.65rem; padding: 2px 6px; border-radius: 6px; background: #f1f5f9; color: #475569; font-weight: bold; border: 1px solid #cbd5e1; }
+        .stock-badge.alert { background: var(--danger); color: white; border-color: var(--danger); }
+
+        .card-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f8fafc;
+            border-radius: 10px;
+            margin-top: 8px;
+            padding: 4px;
+            border: 1px solid #e2e8f0;
+        }
+        .card-btn {
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: white;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #64748b;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            cursor: pointer;
+        }
+        .card-qty-display { font-weight: 900; font-size: 1rem; color: var(--primary); }
+
+        .footer-cart-bar {
+            position: absolute; bottom: 0; left: 0; right: 0; height: var(--footer-h); background: #fff;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.05); display: flex; align-items: center; padding: 0 20px; z-index: 200;
+        }
+        .btn-open-cart { background: var(--primary); color: white; border: none; padding: 14px 24px; border-radius: 12px; font-weight: bold; font-size: 1rem; }
+        .btn-open-cart:disabled { background: #cbd5e1; }
+
+        #cartOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300; display: none; backdrop-filter: blur(4px); }
+        .cart-modal { position: absolute; bottom: 0; left: 0; right: 0; background: #fff; border-radius: 24px 24px 0 0; max-height: 95vh; display: flex; flex-direction: column; }
+        .modal-header { padding: 15px 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 40px; scroll-behavior: smooth; }
+
+        .btn-back { background: none; border: none; color: #64748b; font-size: 0.9rem; font-weight: bold; display: flex; align-items: center; gap: 4px; padding: 0; cursor: pointer; }
+
+        .chip-group { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .chip { padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff; font-size: 0.75rem; cursor: pointer; color: #555; }
+        .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
+        .num-btn { background: #f8fafc; border: 1px solid #e2e8f0; padding: 18px; font-size: 1.4rem; font-weight: bold; border-radius: 12px; cursor: pointer; }
+        .num-btn.clear { color: var(--danger); background: #fff5f5; }
+
+        .input-display { background: #f1f5f9; padding: 15px; font-size: 1.8rem; border-radius: 12px; text-align: right; margin: 10px 0; font-family: monospace; font-weight: bold; }
+
+        .cart-item { display: flex; flex-direction: column; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+        .cart-item-row { display: flex; justify-content: space-between; align-items: center; }
+        
+        .cart-subtotal-display {
+            padding: 12px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px dashed #e2e8f0;
+            margin-bottom: 15px;
+        }
+        
+        .stat-card { background: #fff; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #edf2f7; }
+        .stat-item { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 8px 0; border-bottom: 1px solid #f8fafc; align-items: center; }
+        
+        .btn-cancel { padding: 4px 10px; font-size: 0.7rem; border-radius: 6px; border: 1px solid var(--danger); background: #fff; color: var(--danger); font-weight: bold; }
+        
+        .history-card { background:#fff; border-radius:12px; padding:12px; margin-bottom:10px; border-left:4px solid #2ecc71; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+        .history-card.canceled { border-left-color: #cbd5e1; opacity: 0.75; }
+        .history-card.canceled .amount-text { text-decoration: line-through; color: #94a3b8 !important; }
+
+        .history-money-flow { display: flex; gap: 10px; font-size: 0.65rem; color: #64748b; background: #f8fafc; padding: 4px 8px; border-radius: 4px; margin-top: 4px; }
+        .history-money-flow span b { color: var(--text); }
+
+        .cancel-log-info { font-size: 0.6rem; color: var(--danger); font-weight: bold; margin-top: 4px; padding: 4px; background: #fff5f5; border-radius: 4px; }
+        
+        .gift-badge { background: var(--success); color: white; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+        .badge-stat-pill { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; }
+        
+        .sales-indicator { font-size: 0.7rem; color: #94a3b8; font-weight: normal; margin-left: 8px; }
+
+        .loc-breakdown { font-size: 0.65rem; color: #94a3b8; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; padding-left: 10px; }
+        .loc-breakdown span { background: #f8fafc; border: 1px solid #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+
+        .history-filter-bar { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0; border-bottom: 1px solid #f1f5f9; margin-bottom: 10px; -webkit-overflow-scrolling: touch; }
+        .filter-chip { padding: 6px 12px; border-radius: 16px; background: #fff; border: 1px solid #e2e8f0; font-size: 0.75rem; font-weight: bold; color: #64748b; white-space: nowrap; cursor: pointer; }
+        .filter-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .staff-pill { background: #f1f5f9; border: 1px solid #e2e8f0; padding: 2px 6px; border-radius: 4px; font-family: monospace; color: #475569; }
+
+        /* Cross-tab style */
+        .cross-tab { width: 100%; border-collapse: collapse; font-size: 0.65rem; margin-top: 8px; table-layout: fixed; }
+        .cross-tab th, .cross-tab td { border: 1px solid #f1f5f9; text-align: center; padding: 4px 2px; }
+        .cross-tab th { background: #f8fafc; color: #64748b; font-weight: normal; }
+        .cross-tab td.val-active { font-weight: bold; color: var(--primary); background: #f0f7ff; }
+        .cross-tab td.val-zero { color: #cbd5e1; }
+    </style>
+</head>
+<body>
+
+<div id="loginOverlay">
+    <div class="login-box">
+        <h2 style="margin:0; font-size:1.2rem;">担当者情報を入力</h2>
+        <p style="font-size:0.75rem; color:#64748b;">操作ログに端末IDと名前が記録されます</p>
+        <div style="text-align:left; margin-bottom:4px; font-size:0.7rem; color:#94a3b8; font-weight:bold;">端末固有 ID</div>
+        <input type="text" id="staffIdInput" class="login-input readonly-id" readonly>
+        <div style="text-align:left; margin-bottom:4px; font-size:0.7rem; color:#4a90e2; font-weight:bold;">担当者氏名</div>
+        <input type="text" id="staffNameInput" class="login-input" placeholder="氏名 (例: 田中久美子)" maxlength="10">
+        <button onclick="setStaffInfo()" style="width:100%; padding:15px; background:var(--primary); color:white; border:none; border-radius:12px; font-weight:bold;">レジを開始する</button>
+    </div>
+</div>
+
+<div id="confirmOverlay">
+    <div class="confirm-box">
+        <h2 style="margin:0; font-size:1.1rem; color:var(--danger);">決済の取消確認</h2>
+        <p style="font-size:0.85rem; color:#64748b; margin:15px 0;">
+            この決済を取り消しますか？<br>
+            <span style="color:var(--text); font-weight:bold;">取消実行: <span id="execStaffNameDisplay"></span><br><small class="staff-pill" id="execStaffIdDisplay"></small></span>
+        </p>
+        <div style="display:flex; gap:10px;">
+            <button onclick="closeConfirm()" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ddd; background:#fff;">戻る</button>
+            <button id="btnExecuteCancel" style="flex:1; padding:12px; border-radius:10px; border:none; background:var(--danger); color:white; font-weight:bold;">取り消す</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<header>
+    <div>
+        <h1 style="font-size: 0.9rem; color: var(--primary); margin:0;">物販レジ Pro V36</h1>
+        <div onclick="showLogin()" style="font-size:0.7rem; color:#64748b; font-weight:bold; cursor:pointer;">👤 <span id="staffDisplay">未設定</span></div>
+    </div>
+</header>
+
+<div class="location-bar" id="locBar">
+    <div class="loc-chip" onclick="confirmSetLoc('事前予約', this)">事前予約</div>
+    <div class="loc-chip active" onclick="confirmSetLoc('文化祭', this)">文化祭</div>
+    <div class="loc-chip" onclick="confirmSetLoc('福岡', this)">福岡</div>
+    <div class="loc-chip" onclick="confirmSetLoc('体育祭', this)">体育祭</div>
+    <div class="loc-chip" onclick="confirmSetLoc('大阪', this)">大阪</div>
+    <div class="loc-chip" onclick="confirmSetLoc('東京', this)">東京</div>
+</div>
+
+<div class="tabs">
+    <button id="tab-reg" class="tab active" onclick="switchTab('reg')">会計</button>
+    <button id="tab-his" class="tab" onclick="switchTab('his')">履歴</button>
+    <button id="tab-sta" class="tab" onclick="switchTab('sta')">統計</button>
+</div>
+
+<main>
+    <div id="panel-reg" class="panel active">
+        <div class="scroll-container" id="regScroll">
+            <div id="gridWrapper"></div>
+        </div>
+        <div class="footer-cart-bar">
+            <div style="flex:1">
+                <div style="font-size:0.65rem; color:#64748b;">お支払合計</div>
+                <div class="current-total-display" style="font-size:1.5rem; font-weight:900; color:var(--primary);">¥ 0</div>
+            </div>
+            <button id="btnCartOpen" class="btn-open-cart" onclick="toggleCart(true)" disabled>注文確認 (<span id="cartCount">0</span>)</button>
+        </div>
+    </div>
+
+    <div id="panel-his" class="panel">
+        <div class="scroll-container" id="hisScroll">
+            <div class="history-filter-bar" id="historyFilterBar">
+                <div class="filter-chip active" onclick="setHistoryFilter('全て', this)">全て</div>
+                <div class="filter-chip" onclick="setHistoryFilter('事前予約', this)">事前予約</div>
+                <div class="filter-chip" onclick="setHistoryFilter('文化祭', this)">文化祭</div>
+                <div class="filter-chip" onclick="setHistoryFilter('福岡', this)">福岡</div>
+                <div class="filter-chip" onclick="setHistoryFilter('体育祭', this)">体育祭</div>
+                <div class="filter-chip" onclick="setHistoryFilter('大阪', this)">大阪</div>
+                <div class="filter-chip" onclick="setHistoryFilter('東京', this)">東京</div>
+            </div>
+            <div id="hisList"></div>
+        </div>
+    </div>
+
+    <div id="panel-sta" class="panel">
+        <div class="scroll-container" id="staScroll">
+            <div class="stat-card">
+                <div style="font-size:0.8rem; font-weight:bold; color:var(--primary); margin-bottom:10px; display:flex; align-items:center; gap:5px;">📊 売上統計 (有効決済)</div>
+                <div class="stat-item" style="font-size:1rem; border-bottom:2px solid #f1f5f9;">
+                    <span style="font-weight:900;">合計金額 (決済回数)</span>
+                    <span style="font-weight:900; color:var(--primary);">¥<span id="statTotalAmount">0</span> (<span id="statTotalCount">0</span>)</span>
+                </div>
+                <div id="locStatList"></div>
+            </div>
+
+            <div class="stat-card">
+                <div style="font-size:0.8rem; font-weight:bold; margin-bottom:8px;">📦 販売数詳細と在庫計算 (性年代別クロス集計)</div>
+                <div id="globalInventoryList"></div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<div id="cartOverlay" onclick="if(event.target===this) toggleCart(false)">
+    <div class="cart-modal">
+        <div class="modal-header">
+            <button class="btn-back" onclick="toggleCart(false)">戻る</button>
+            <h2 style="font-size:1.1rem; margin:0; font-weight:800;">注文確認</h2>
+            <div style="width:40px;"></div>
+        </div>
+        <div id="cartModalBody" class="modal-body">
+            <div id="cartItemsList"></div>
+            
+            <div class="cart-subtotal-display">
+                <span style="font-size:0.85rem; color:#64748b; font-weight:bold;">現在の合計額</span>
+                <span style="font-size:1.3rem; font-weight:900; color:var(--primary);">¥ <span class="subtotal-val">0</span></span>
+            </div>
+
+            <div>
+                <div style="font-size:0.7rem; color:#64748b; margin-bottom:8px;">お客様属性 (任意)</div>
+                <div class="chip-group">
+                    <button class="chip" onclick="setAttr('age', '10代', this)">10代</button>
+                    <button class="chip" onclick="setAttr('age', '20代', this)">20代</button>
+                    <button class="chip" onclick="setAttr('age', '30代', this)">30代</button>
+                    <button class="chip" onclick="setAttr('age', '40代', this)">40代</button>
+                    <button class="chip" onclick="setAttr('age', '50代', this)">50代</button>
+                    <button class="chip" onclick="setAttr('age', '60代以上', this)">60代以上</button>
+                </div>
+                <div class="chip-group">
+                    <button class="chip" onclick="setAttr('gender', '男性', this)">男性</button>
+                    <button class="chip" onclick="setAttr('gender', '女性', this)">女性</button>
+                    <button class="chip" onclick="setAttr('gender', 'その他', this)">その他</button>
+                </div>
+
+                <div style="font-size:0.7rem; color:#64748b;">お預かり金額</div>
+                <div id="cashInputDisplay" class="input-display">0</div>
+                <div class="numpad">
+                    <button class="num-btn" onclick="inputNum('7')">7</button>
+                    <button class="num-btn" onclick="inputNum('8')">8</button>
+                    <button class="num-btn" onclick="inputNum('9')">9</button>
+                    <button class="num-btn" onclick="inputNum('4')">4</button>
+                    <button class="num-btn" onclick="inputNum('5')">5</button>
+                    <button class="num-btn" onclick="inputNum('6')">6</button>
+                    <button class="num-btn" onclick="inputNum('1')">1</button>
+                    <button class="num-btn" onclick="inputNum('2')">2</button>
+                    <button class="num-btn" onclick="inputNum('3')">3</button>
+                    <button class="num-btn" onclick="inputNum('0')">0</button>
+                    <button class="num-btn" onclick="inputNum('00')">00</button>
+                    <button class="num-btn clear" onclick="inputNum('clear')">C</button>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; background:#f8fafc; padding:15px; border-radius:14px; margin-top:20px; border:1px solid #e2e8f0;">
+                    <div><div style="font-size:0.65rem; color:#64748b;">お支払い合計</div><div style="font-size:1.4rem; font-weight:900;">¥<span id="modalTotal">0</span></div></div>
+                    <div style="text-align:right;"><div style="font-size:0.65rem; color:#64748b;">お釣り</div><div id="changeDisp" style="font-size:1.4rem; font-weight:900; color:var(--primary);">¥ 0</div></div>
+                </div>
+                <button id="submitBtn" class="btn-checkout" onclick="processSubmit()" style="margin-top:15px; width:100%; padding:18px; background:var(--success); color:white; border:none; border-radius:14px; font-weight:bold; font-size:1.3rem;" disabled>会計を確定する</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const firebaseConfig = JSON.parse(__firebase_config);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'pos-v36';
+
+    let cart = [], curLoc = '文化祭', curAge = null, curGender = null, cashVal = "0", staffName = "", staffId = "";
+    let sales = [], historyFilter = '全て';
+
+    const locations = ['事前予約', '文化祭', '福岡', '体育祭', '大阪', '東京'];
+    const ageGroups = ['10代', '20代', '30代', '40代', '50代', '60代以上'];
+    const genders = ['男性', '女性', 'その他'];
+
+    const products = [
+        { id: 'kishi-badge', name: "寄士認定バッジ", price: 1000, initial: 500 },
+        { id: 'iguana-red', name: "🔴イグアナ君バッジ", price: 2000, initial: 200 },
+        { id: 'iguana-blue', name: "🔵イグアナ君バッジ", price: 2000, initial: 200 },
+        { id: 'kasuri-pouch', name: "絣ポーチ", price: 4000, initial: 30 },
+        { id: 'kasuri-sacoche', name: "絣サコッシュ", price: 6000, initial: 30 },
+        { id: 'bag-s', name: "トートバッグ(S)", price: 11000, initial: 75 },
+        { id: 'bag-m', name: "トートバッグ(M)", price: 12000, initial: 45 },
+        { id: 'polo-s', name: "ポロシャツ S", price: 12000, initial: 10 },
+        { id: 'polo-m', name: "ポロシャツ M", price: 12000, initial: 20 },
+        { id: 'polo-l', name: "ポロシャツ L", price: 12000, initial: 20 },
+        { id: 'polo-xl', name: "ポロシャツ XL", price: 12000, initial: 10 },
+        { id: 'scarf-nv', name: "🔵NV シルクスカーフ", price: 18000, initial: 35 },
+        { id: 'scarf-gr', name: "🟢GR シルクスカーフ", price: 18000, initial: 10 },
+        { id: 'scarf-mix', name: "🔵🟢NV×GR スカーフ", price: 18000, initial: 5 }
+    ];
+
+    /**
+     * 在庫計算のコアロジック
+     */
+    function calculateDisplayStock(productId) {
+        const p = products.find(x => x.id === productId);
+        if (!p) return 0;
+
+        const totalSold = sales
+            .filter(s => !s.canceled)
+            .reduce((sum, s) => {
+                const item = s.items.find(i => i.id === productId);
+                return sum + (item ? item.qty : 0);
+            }, 0);
+
+        const bSold = sales
+            .filter(s => !s.canceled && s.loc === '文化祭')
+            .reduce((sum, s) => {
+                const item = s.items.find(i => i.id === productId);
+                return sum + (item ? item.qty : 0);
+            }, 0);
+
+        if (curLoc === '文化祭') {
+            if (productId === 'iguana-red' || productId === 'iguana-blue') {
+                return Math.max(0, 10 - bSold);
+            }
+            return 0;
+        }
+
+        return Math.max(0, p.initial - totalSold);
+    }
+
+    window.showLogin = () => { 
+        let id = localStorage.getItem('pos_staff_id');
+        if(!id) {
+            id = 'TID-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+            localStorage.setItem('pos_staff_id', id);
+        }
+        document.getElementById('staffIdInput').value = id;
+        document.getElementById('loginOverlay').style.display = 'flex'; 
+    };
+
+    window.setStaffInfo = () => {
+        const nameVal = document.getElementById('staffNameInput').value.trim();
+        const idVal = document.getElementById('staffIdInput').value.trim();
+        if(!nameVal) return;
+        staffName = nameVal;
+        staffId = idVal;
+        document.getElementById('staffDisplay').innerHTML = `<span class="staff-pill">${staffId}</span> ${staffName}`;
+        document.getElementById('loginOverlay').style.display = 'none';
+    };
+
+    window.switchTab = (t) => {
+        document.querySelectorAll('.tab, .panel').forEach(el => el.classList.remove('active'));
+        document.getElementById(`tab-${t}`).classList.add('active');
+        document.getElementById(`panel-${t}`).classList.add('active');
+        if (t === 'his') renderHistory();
+        if (t === 'sta') renderStats();
+    };
+
+    window.setHistoryFilter = (loc, el) => {
+        historyFilter = loc;
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        el.classList.add('active');
+        renderHistory();
+    };
+
+    window.confirmSetLoc = (loc, el) => {
+        if (cart.length > 0 && curLoc !== loc) {
+            if (!confirm("拠点を変更するとカートはリセットされます。")) return;
+        }
+        curLoc = loc;
+        document.querySelectorAll('.loc-chip').forEach(c => c.classList.remove('active'));
+        el.classList.add('active');
+        cart = []; updateUI();
+    };
+
+    window.setAttr = (type, val, el) => {
+        if(type === 'age') curAge = (curAge === val) ? null : val;
+        if(type === 'gender') curGender = (curGender === val) ? null : val;
+        el.parentElement.querySelectorAll('.chip').forEach(c => {
+            c.classList.toggle('active', c.innerText === (type === 'age' ? curAge : curGender));
+        });
+        updateUI();
+    };
+
+    window.inputNum = (val) => {
+        if (val === 'clear') cashVal = "0";
+        else if (cashVal === "0") cashVal = val;
+        else if (cashVal.length < 9) cashVal += val;
+        document.getElementById('cashInputDisplay').innerText = parseInt(cashVal).toLocaleString();
+        updateUI();
+    };
+
+    window.toggleCart = (show) => { 
+        document.getElementById('cartOverlay').style.display = show ? 'block' : 'none'; 
+    };
+
+    window.handleProductAction = (id, delta, event) => {
+        if(event) event.stopPropagation();
+        const p = products.find(x => x.id === id);
+        const stock = calculateDisplayStock(id);
+        const inCart = cart.find(c => c.id === id && !c.isGift);
+
+        if (delta > 0) {
+            if (stock <= (inCart ? inCart.qty : 0)) return;
+            if (inCart) inCart.qty++;
+            else cart.push({ ...p, qty: 1, isGift: false });
+        } else {
+            if (inCart) {
+                inCart.qty--;
+                if (inCart.qty <= 0) cart = cart.filter(c => !(c.id === id && !c.isGift));
+            }
+        }
+        updateUI();
+    };
+
+    function updateUI() {
+        const otherTotal = cart.reduce((sum, item) => (item.id !== 'kishi-badge' ? sum + (item.price * item.qty) : sum), 0);
+        const isEligible = (['事前予約', '福岡', '大阪', '東京'].includes(curLoc)) && otherTotal >= 4000;
+        
+        if (isEligible && !cart.some(i => i.id === 'kishi-badge' && i.isGift)) {
+            cart.push({ ...products.find(p => p.id === 'kishi-badge'), qty: 1, isGift: true, price: 0 });
+        } else if (!isEligible) {
+            cart = cart.filter(i => !(i.id === 'kishi-badge' && i.isGift));
+        }
+        
+        const finalTotal = cart.reduce((s, i) => s + (i.price * i.qty), 0);
+        document.querySelectorAll('.current-total-display').forEach(el => el.innerText = `¥ ${finalTotal.toLocaleString()}`);
+        document.getElementById('modalTotal').innerText = finalTotal.toLocaleString();
+        document.getElementById('cartCount').innerText = cart.reduce((s, i) => s + i.qty, 0);
+        document.getElementById('btnCartOpen').disabled = cart.length === 0;
+        
+        document.getElementById('cartItemsList').innerHTML = cart.map((item, i) => `
+            <div class="cart-item">
+                <div class="cart-item-row">
+                    <div style="flex:1">
+                        <div style="font-size:0.85rem; font-weight:bold;">${item.name} ${item.isGift ? '<span class="gift-badge">進呈</span>' : ''}</div>
+                        <div style="font-size:0.8rem; color:var(--primary); font-weight:bold;">¥${(item.price * item.qty).toLocaleString()}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        ${item.isGift ? `<span style="font-size:0.8rem; font-weight:bold; color:var(--success);">1個</span>` :
+                        `<button onclick="adjustQty(${i}, -1)" style="width:30px;height:30px;border:1px solid #ddd;background:#fff;border-radius:6px;">-</button>
+                         <span style="font-weight:bold; min-width:20px; text-align:center;">${item.qty}</span>
+                         <button onclick="adjustQty(${i}, 1)" style="width:30px;height:30px;border:1px solid #ddd;background:#fff;border-radius:6px;">+</button>`}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        
+        const cash = parseInt(cashVal);
+        document.getElementById('changeDisp').innerText = `¥ ${Math.max(0, cash - finalTotal).toLocaleString()}`;
+        document.getElementById('submitBtn').disabled = (cash < finalTotal);
+        renderProducts();
+    }
+
+    window.adjustQty = (idx, delta) => {
+        const item = cart[idx];
+        if (!item || item.isGift) return;
+        const stock = calculateDisplayStock(item.id);
+        if (delta > 0 && stock <= item.qty) return;
+        item.qty += delta;
+        if (item.qty <= 0) cart.splice(idx, 1);
+        updateUI();
+    };
+
+    function renderProducts() {
+        const gridWrapper = document.getElementById('gridWrapper');
+        let list = products;
+        if (curLoc === '文化祭') list = products.filter(p => p.id === 'iguana-red' || p.id === 'iguana-blue');
+        else if (curLoc === '体育祭') list = products.filter(p => p.id !== 'kishi-badge');
+        else if (curLoc === '事前予約') list = products.filter(p => p.id.startsWith('scarf-'));
+
+        gridWrapper.innerHTML = `<div class="product-grid">${list.map(p => {
+            const stock = calculateDisplayStock(p.id);
+            const inCart = cart.find(c => c.id === p.id && !c.isGift)?.qty || 0;
+            return `
+                <div class="product-card ${stock <= 0 ? 'disabled' : ''}" onclick="handleProductAction('${p.id}', 1)">
+                    <span class="stock-badge ${stock <= 5 ? 'alert' : ''}">${stock}</span>
+                    <div style="font-size:0.85rem; font-weight:bold; line-height:1.2; flex:1;">${p.name}</div>
+                    <div style="color:var(--primary); font-weight:900; margin-bottom:4px;">¥${p.price.toLocaleString()}</div>
+                    <div class="card-controls" onclick="event.stopPropagation()">
+                        <button class="card-btn" onclick="handleProductAction('${p.id}', -1, event)">-</button>
+                        <span class="card-qty-display">${inCart}</span>
+                        <button class="card-btn" onclick="handleProductAction('${p.id}', 1, event)">+</button>
+                    </div>
+                </div>`;
+        }).join('')}</div>`;
+    }
+
+    function renderStats() {
+        const activeSales = sales.filter(s => !s.canceled);
+        document.getElementById('statTotalAmount').innerText = activeSales.reduce((sum, s) => sum + (s.total || 0), 0).toLocaleString();
+        document.getElementById('statTotalCount').innerText = activeSales.length.toLocaleString();
+
+        const locStatContainer = document.getElementById('locStatList');
+        locStatContainer.innerHTML = locations.map(loc => {
+            const locSales = activeSales.filter(s => s.loc === loc);
+            return `<div class="stat-item"><span>${loc}</span><span>¥${locSales.reduce((sum, s) => sum + (s.total || 0), 0).toLocaleString()} (${locSales.length}件)</span></div>`;
+        }).join('');
+
+        document.getElementById('globalInventoryList').innerHTML = products.map(p => {
+            const totalSold = activeSales.reduce((sum, s) => sum + (s.items.find(i => i.id === p.id)?.qty || 0), 0);
+            const displayVal = calculateDisplayStock(p.id);
+
+            // Generate Cross-tab data
+            const crossData = {};
+            genders.forEach(g => {
+                crossData[g] = {};
+                ageGroups.forEach(a => {
+                    crossData[g][a] = activeSales
+                        .filter(s => s.gender === g && s.age === a)
+                        .reduce((sum, s) => sum + (s.items.find(i => i.id === p.id)?.qty || 0), 0);
+                });
+            });
+
+            return `
+                <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
+                    <div class="stat-item" style="border:none; padding:0; margin-bottom:8px;">
+                        <span style="font-weight:bold; color:var(--text);">${p.name}</span>
+                        <span style="font-weight:bold;">総在庫 ${displayVal} / 累計販売 ${totalSold}</span>
+                    </div>
+                    <table class="cross-tab">
+                        <thead>
+                            <tr>
+                                <th style="width:15%"></th>
+                                ${ageGroups.map(a => `<th>${a.replace('代','')}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${genders.map(g => `
+                                <tr>
+                                    <th>${g.charAt(0)}</th>
+                                    ${ageGroups.map(a => {
+                                        const val = crossData[g][a];
+                                        return `<td class="${val > 0 ? 'val-active' : 'val-zero'}">${val}</td>`;
+                                    }).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+        }).join('');
+    }
+
+    function renderHistory() {
+        let list = [...sales];
+        if (historyFilter !== '全て') list = list.filter(s => s.loc === historyFilter);
+        list.sort((a,b) => (b.at?.seconds || 0) - (a.at?.seconds || 0));
+        
+        document.getElementById('hisList').innerHTML = list.map(s => {
+            const date = s.at ? new Date(s.at.seconds * 1000).toLocaleString('ja-JP') : '...';
+            return `
+            <div class="history-card ${s.canceled ? 'canceled' : ''}">
+                <div style="display:flex; justify-content:space-between; font-size:0.6rem; color:#94a3b8; font-weight:bold; margin-bottom:4px;">
+                    <div>${date} [${s.loc}]</div>
+                    <div>
+                        担当: <span class="staff-pill">${s.staffId || '---'}</span> ${s.staff || '不明'}
+                        ${!s.canceled ? `<button class="btn-cancel" onclick="openConfirmCancel('${s.id}')">取消</button>` : '<span style="color:var(--danger)">取消済</span>'}
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div class="amount-text" style="font-weight:900; font-size:1.1rem;">¥${(s.total||0).toLocaleString()}</div>
+                    <div style="font-size:0.65rem; color:#64748b;">${s.age||'-'}/${s.gender||'-'}</div>
+                </div>
+                <div style="font-size:0.7rem; color:#64748b; margin-top:4px;">${s.items.map(i=>`${i.name}x${i.qty}`).join(', ')}</div>
+                ${s.canceled ? `<div class="cancel-log-info">⚠️ 取消者: ${s.canceledBy} (${new Date(s.canceledAt.seconds*1000).toLocaleString()})</div>` : ''}
+            </div>`;
+        }).join('');
+    }
+
+    window.openConfirmCancel = (saleId) => {
+        if(!staffName) { showLogin(); return; }
+        document.getElementById('execStaffNameDisplay').innerText = staffName;
+        document.getElementById('execStaffIdDisplay').innerText = staffId;
+        document.getElementById('btnExecuteCancel').onclick = () => executeCancel(saleId);
+        document.getElementById('confirmOverlay').style.display = 'flex';
+    };
+    window.closeConfirm = () => { document.getElementById('confirmOverlay').style.display = 'none'; };
+
+    async function executeCancel(saleId) {
+        if (!auth.currentUser || !staffName) return;
+        try {
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sales', saleId), { 
+                canceled: true, canceledBy: staffName, canceledStaffId: staffId, canceledAt: serverTimestamp() 
+            });
+            closeConfirm(); showToast("取消完了しました", "var(--warning)");
+        } catch (e) { console.error(e); }
+    }
+
+    window.processSubmit = async () => {
+        if (!auth.currentUser || !staffName) { showLogin(); return; }
+        const total = cart.reduce((s, i) => s + (i.price * i.qty), 0);
+        const cash = parseInt(cashVal);
+        try {
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), {
+                at: serverTimestamp(), loc: curLoc, total, age: curAge, gender: curGender, 
+                canceled: false, staff: staffName, staffId: staffId, received: cash, change: cash - total,
+                items: cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price, gift: !!i.isGift }))
+            });
+            showToast("会計完了！", "var(--success)"); 
+            cart = []; curAge = null; curGender = null; cashVal = "0";
+            document.getElementById('cashInputDisplay').innerText = "0";
+            toggleCart(false); updateUI();
+        } catch (e) { console.error(e); }
+    };
+
+    function showToast(msg, color) { 
+        const t = document.getElementById('toast'); 
+        t.innerText = msg; t.style.background = color; t.style.display = 'block'; 
+        setTimeout(() => { t.style.display = 'none'; }, 2000); 
+    }
+
+    const initAuth = async () => {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+            await signInAnonymously(auth);
+        }
+    };
+
+    onAuthStateChanged(auth, user => { 
+        if (user) {
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), snap => {
+                sales = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+                updateUI();
+                if(document.getElementById('panel-sta').classList.contains('active')) renderStats();
+                if(document.getElementById('panel-his').classList.contains('active')) renderHistory();
+            });
+        }
+    });
+    
+    window.onload = () => { initAuth(); showLogin(); };
+</script>
+</body>
+</html>
